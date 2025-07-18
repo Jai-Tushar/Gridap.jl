@@ -1,4 +1,4 @@
-module BiharmonicTests
+# module BiharmonicTests
 
 using Test
 using Gridap
@@ -51,4 +51,8 @@ tol = 1.0e-10
 @test el2 < tol
 @test eh1 < tol
 
-end
+# end
+
+v = get_fe_basis(V)
+
+∫(Δ(v))dΩ

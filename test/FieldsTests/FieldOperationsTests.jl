@@ -1,4 +1,4 @@
-module FieldOperationsTests
+# module FieldOperationsTests
 
 using Gridap.Arrays
 using Gridap.Fields
@@ -30,6 +30,8 @@ c = return_cache(df,p)
 ∇df = ∇(df)
 c = return_cache(∇df,p)
 # @btime evaluate!($c,$∇df,$p)
+
+@enter Δdf = Δ(df)
 
 df = f-f
 test_field(df,p,fp-fp,grad=0.0*∇fp)
@@ -144,4 +146,4 @@ test_field(bdf,x,bdfx,grad=∇bdfx)
 c = return_cache(∇bdf,x)
 # @btime evaluate!(c,∇bdf,x)
 
-end # module
+# end # module
