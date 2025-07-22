@@ -77,6 +77,9 @@ end
 function test_operator(P,V)
   u, v = get_trial_fe_basis(V), get_fe_basis(V)
   Pu, Pv = P(u), P(v)
+
+  uh = zero(V)
+  Ruh = P(uh)
 end
 
 function test_patch_assembly(model,domain_tags,integration_tags;order=1)
@@ -167,6 +170,13 @@ function test_patch_assembly(model,domain_tags,integration_tags;order=1)
     cell_R = assemble_matrix(passem_R,cell_mats)
     @test length(collect(cell_R)) == n_patches
   end
+
+  # Star-patch assembly 
+
+  passem4 = FESpaces.PatchAssembler(ptopo,X,X;assembly=:star)
+  a4((uΩ,uΓ),(vΩ,vΓ)) = laplacian(uΩ,vΩ,dΩp) + mass(uΓ,vΩ,Γp,dΓp) + mass(uΩ,vΓ,Γp,dΓp) + mass(uΓ,vΓ,Γp,dΓp)
+  l4((vΩ,vΓ)) = ∫(f⋅vΩ)dΩp
+  mats4 = assemble_matrix(a4,passem4,X,X)
 
 end
 

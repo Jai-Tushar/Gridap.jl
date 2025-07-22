@@ -104,18 +104,19 @@ function PolytopalFESpace(
     dirichlet_components = fill(true,ncomps)
   end
 
+  ctype_to_prebasis, cell_to_ctype = compress_cell_data(cell_prebasis)
+  ctype_to_conformity = map(MonomialDofConformity,ctype_to_prebasis)
+  metadata = ctype_to_conformity
+
   ntags = length(dirichlet_tags)
   if ntags != 0
     @notimplementedif !isnothing(local_kernel)
     cell_to_tag = get_face_tag_index(labels,dirichlet_tags,Dc)
     cell_is_dirichlet = map(!isequal(UNSET),cell_to_tag)
-    ctype_to_prebasis, cell_to_ctype = compress_cell_data(cell_prebasis)
-    ctype_to_conformity = map(MonomialDofConformity,ctype_to_prebasis)
     ctype_to_ldof_to_comp = map(c -> c.dof_to_comp, ctype_to_conformity)
     cell_dof_ids, nfree, ndir, dirichlet_dof_tag, dirichlet_cells = compute_discontinuous_cell_dofs(
       cell_to_ctype, ctype_to_ldof_to_comp, cell_to_tag, dirichlet_components
     )
-    metadata = ctype_to_conformity
   else
     ndir = 0
     dirichlet_dof_tag = Int8[]
@@ -125,7 +126,6 @@ function PolytopalFESpace(
     ctype_to_shapefuns = Base.OneTo(length(cell_shapefuns))
     ctype_to_ndofs = lazy_map(length,cell_shapefuns)
     cell_dof_ids, nfree = compute_discontinuous_cell_dofs(ctype_to_shapefuns,ctype_to_ndofs)
-    metadata = nothing
   end
 
   return PolytopalFESpace(
@@ -402,74 +402,74 @@ function shoelace(face_ents)
   return area
 end
 
-function get_facet_measure(p::Polytope{D}, face::Int) where D
-  measures = Float64[]
-  if D == 3
-    @notimplemented
-  elseif isa(p, ExtrusionPolytope{2})
-    if p == QUAD 
-      perm = [1,2,4,3]
-    elseif p == TRI
-      perm = [1,2,3]
-    end
-  elseif isa(p, Polygon)   
-    perm = collect(1:length(p.edge_vertex_graph))
-  end
+# function get_facet_measure(p::Polytope{D}, face::Int) where D
+#   measures = Float64[]
+#   if D == 3
+#     @notimplemented
+#   elseif isa(p, ExtrusionPolytope{2})
+#     if p == QUAD 
+#       perm = [1,2,4,3]
+#     elseif p == TRI
+#       perm = [1,2,3]
+#     end
+#   elseif isa(p, Polygon)   
+#     perm = collect(1:length(p.edge_vertex_graph))
+#   end
+# 
+#   dim = get_dimranges(p)[face+1]
+#   face_ents = get_face_coordinates(p)[dim]
+#   if face == 0
+#     for entity in face_ents
+#       push!(measures, 0.0)
+#     end
+#   elseif face == 1
+#     for entity in face_ents
+#       p1, p2 = entity
+#       push!(measures, norm(p2-p1))
+#     end
+#   elseif face == 2
+#     face_ents = map(Reindex(face_ents...),perm)
+#     area = shoelace(face_ents)
+#     push!(measures, area)
+#   end
+#   return measures
+# end
 
-  dim = get_dimranges(p)[face+1]
-  face_ents = get_face_coordinates(p)[dim]
-  if face == 0
-    for entity in face_ents
-      push!(measures, 0.0)
-    end
-  elseif face == 1
-    for entity in face_ents
-      p1, p2 = entity
-      push!(measures, norm(p2-p1))
-    end
-  elseif face == 2
-    face_ents = map(Reindex(face_ents...),perm)
-    area = shoelace(face_ents)
-    push!(measures, area)
-  end
-  return measures
-end
-
-function get_facet_centroid(p::Polytope{D}, face::Int) where D
-
-  if D == 3
-    @notimplemented
-  end
-
-  dim = get_dimranges(p)[face+1]
-  face_coords = get_face_coordinates(p)[dim]
-  if isa(p, ExtrusionPolytope{2}) || isa(p, ExtrusionPolytope{1})
-    if face == 1 || face == 2
-      centroid = mean.(face_coords)
-    end
-  elseif isa(p, Polygon)
-    perm = collect(1:length(p.edge_vertex_graph))
-    if face == 1
-      centroid = mean.(face_coords)
-    elseif face == 2
-      ents = map(Reindex(face_coords...),perm)
-      shift = circshift(ents, -1)
-
-      components_x = map(ents, shift) do x1, x2
-        ( x1[1] + x2[1] ) * ( x1[1] * x2[2] - x2[1] * x1[2] )
-      end
-      components_y = map(ents, shift) do x1, x2
-        ( x1[2] + x2[2] ) * ( x1[1] * x2[2] - x2[1] * x1[2] )
-      end
-      
-      area = get_facet_measure(p, face)
-      centroid_x = (1 ./ (6*area)) * sum(components_x)
-      centroid_y = (1 ./ (6*area)) * sum(components_y)        
-      centroid = VectorValue{2, Float64}(centroid_x..., centroid_y...)
-    end
-  end
-  return centroid
-end
+# function get_facet_centroid(p::Polytope{D}, face::Int) where D
+# 
+#   if D == 3
+#     @notimplemented
+#   end
+# 
+#   dim = get_dimranges(p)[face+1]
+#   face_coords = get_face_coordinates(p)[dim]
+#   if isa(p, ExtrusionPolytope{2}) || isa(p, ExtrusionPolytope{1})
+#     if face == 1 || face == 2
+#       centroid = mean.(face_coords)
+#     end
+#   elseif isa(p, Polygon)
+#     perm = collect(1:length(p.edge_vertex_graph))
+#     if face == 1
+#       centroid = mean.(face_coords)
+#     elseif face == 2
+#       ents = map(Reindex(face_coords...),perm)
+#       shift = circshift(ents, -1)
+# 
+#       components_x = map(ents, shift) do x1, x2
+#         ( x1[1] + x2[1] ) * ( x1[1] * x2[2] - x2[1] * x1[2] )
+#       end
+#       components_y = map(ents, shift) do x1, x2
+#         ( x1[2] + x2[2] ) * ( x1[1] * x2[2] - x2[1] * x1[2] )
+#       end
+#       
+#       area = get_facet_measure(p, face)
+#       centroid_x = (1 ./ (6*area)) * sum(components_x)
+#       centroid_y = (1 ./ (6*area)) * sum(components_y)        
+#       centroid = VectorValue{2, Float64}(centroid_x..., centroid_y...)
+#     end
+#   end
+#   return centroid
+# end
 
 function get_facet_diameter(p::Polytope{D}, face::Int) where D
   if D == 3
@@ -523,5 +523,29 @@ function FESpaces.renumber_free_and_dirichlet_dof_ids(
     space.ntags,
     space.order,
     space.metadata
+  )
+end
+
+function get_cell_conformity(space::PolytopalFESpace)
+  trian = get_triangulation(space)
+  
+  monomial_conformity = only(space.metadata)
+  ndofs = length(monomial_conformity.dof_to_term)
+  D = length(monomial_conformity.orders)
+
+  cell_ctype = get_cell_type(trian)
+  ctype_poly = get_polytopes(trian)
+
+  ctype_lface_own_ldofs = map(ctype_poly) do p
+    nfaces = num_faces(p)
+    [ifelse(isequal(face,nfaces),collect(1:ndofs),Int[]) for face in 1:nfaces]
+  end
+  ctype_lface_pindex_pdofs = map(ReferenceFEs._trivial_face_own_dofs_permutations, ctype_lface_own_ldofs)
+  d_ctype_num_faces = [
+    map(p -> num_faces(p,d), ctype_poly) for d in 0:D
+  ]
+
+  return CellConformity(
+    cell_ctype, ctype_lface_own_ldofs, ctype_lface_pindex_pdofs, d_ctype_num_faces
   )
 end
