@@ -794,8 +794,10 @@ end
 
 Euclidean (2-)norm of `u`, namely `sqrt(inner(u,u))`.
 """
-@inline norm(u::MultiValue{Tuple{D}}) where D = sqrt(inner(u,u))
-@inline norm(u::MultiValue{Tuple{D1,D2}}) where {D1,D2} = sqrt(inner(u,u))
+@inline norm(u::MultiValue{Tuple{D},<:Real}) where D = sqrt(inner(u,u))
+@inline norm(u::MultiValue{Tuple{D}}) where D = sqrt(real(inner(u,conj(u))))
+@inline norm(u::MultiValue{Tuple{D1,D2},<:Real}) where {D1,D2} = sqrt(inner(u,u))
+@inline norm(u::MultiValue{Tuple{D1,D2}}) where {D1,D2} = sqrt(real(inner(u,conj(u))))
 @inline norm(u::MultiValue{Tuple{0},T}) where T = sqrt(zero(T))
 
 ###############################################################
@@ -919,6 +921,24 @@ Return `v` if  `v isa AbstractSymTensorValue`.
 end
 
 symmetric_part(v::AbstractSymTensorValue) = v
+
+"""
+    skew_symmetric_part(v::MultiValue{Tuple{D,D}})::MultiValue{Tuple{D,D}}
+
+Return the asymmetric part of second order tensor, that is `½(v - vᵀ)`.
+Return `v` if  `v isa AbstractSymTensorValue`.
+"""
+@generated function skew_symmetric_part(v::MultiValue{Tuple{D,D},T}) where {D,T}
+  iszero(D) && return :( zero(TensorValue{0,0,T}) )
+  str = "("
+  for j in 1:D
+      for i in 1:D
+          str *= "0.5*v[$i,$j] - 0.5*v[$j,$i], "
+      end
+  end
+  str *= ")"
+  Meta.parse("TensorValue{D,D}($str)")
+end
 
 ###############################################################
 # diag
