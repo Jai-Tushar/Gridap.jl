@@ -1,9 +1,10 @@
 """
     struct GeneralPolytope{D,Dp,Tp} <: Polytope{D}
 
-  The `GeneralPolytope` is definded defined by a set of vertices and a rototation
+  The `GeneralPolytope` is defined by a set of vertices and a rotation
   system (a planar oriented graph). This polytopal representation can represent
-  any polytope in 2 and 3 dimensions.
+  any polytope of dimension 2 and 3. `Dp` is the embedding dimension and `Tp`
+  the element type of the vertices.
 
   In 2 dimensions ([`Polygon`](@ref)), the representation of the polygon is a closed polyline.
 
@@ -16,6 +17,9 @@
   > D. Powell, T. Abel, "An exact general remeshing scheme applied to physically conservative voxelization", J. Comput. Phys. 297 (Sept. 2015) 340–356, doi: [10.1016/j.jcp.2015.05.022](https://doi.org/10.1016/j.jcp.2015.05.022.
 
   > S. Badia, P. A. Martorell, F. Verdugo. "Geometrical discretisations for unfitted finite elements on explicit boundary representations", J.Comput. Phys. 460 (2022): 111162. doi: [10.1016/j.jcp.2022.111162](https://doi.org/10.1016/j.jcp.2022.111162)
+
+!!! warning
+    General polytope can be flat, i.e. a 3-vertices `Polygon` might have it's vertices aligned on a line. So `D` is actually an upper bound of the polytope's actual dimension.
 """
 struct GeneralPolytope{D,Dp,Tp,Td} <: Polytope{D}
   vertices::Vector{Point{Dp,Tp}}
@@ -50,14 +54,14 @@ end
 """
     Polygon = GeneralPolytope{2}
 
-  A polygon is a [`GeneralPolytope`](@ref) in 2 dimensions.
+A polygon is a 2-dimensional [`GeneralPolytope`](@ref).
 """
 const Polygon = GeneralPolytope{2}
 
 """
     Polyhedron = GeneralPolytope{3}
 
-  A polyhedron is a [`GeneralPolytope`](@ref) in 3 dimensions.
+A polyhedron is a 3-dimensional [`GeneralPolytope`](@ref).
 """
 const Polyhedron = GeneralPolytope{3}
 
@@ -125,6 +129,8 @@ end
 function generate_polytope_data(p::Polytope,::Nothing)
   nothing
 end
+
+# Constructors from standard polytopes
 
 function Polygon(p::Polytope{2},vertices::AbstractVector{<:Point};kwargs...)
   if p == TRI
@@ -252,6 +258,36 @@ end
 is_simplex(::GeneralPolytope) = false
 
 is_n_cube(::GeneralPolytope) = false
+
+function is_convex(p::Polygon)
+  tol = 10*eps(Float64)
+  coords = get_vertex_coordinates(p)
+  G = get_graph(p)
+  for (v,(vprev,vnext)) in enumerate(G)
+    ein  = coords[v] - coords[vprev]
+    eout = coords[vnext] - coords[v]
+    (dot(ein,eout) > tol) && return false
+  end
+  return true
+end
+
+# We want to check that each face creates a half-space that 
+# contains all other vertices.
+function is_convex(p::Polyhedron)
+  tol = 10*eps(Float64)
+  coords = get_vertex_coordinates(p)
+  f_to_v = get_faces(p,2,0)
+  normals = get_facet_normal(p)
+  for (f, v) in enumerate(f_to_v)
+    xc = mean(coords[v])
+    nf = normals[f]
+    for x in coords
+      # nf is outward, so we want <= 0
+      (dot(nf,x-xc) > tol) && return false
+    end
+  end
+  return true
+end
 
 function simplexify(p::GeneralPolytope{D}) where D
   @assert !isopen(p)
@@ -741,9 +777,9 @@ function compute_orientation(p::GeneralPolytope{D}) where D
   return s
 end
 
-# Admissible permutations for Polygons are the ones that 
+# Admissible permutations for Polygons are the ones that
 # preserve the orientation of the circular graph that defines it.
-# For 2D polytopes, this will always be positive. For 3D polytopes, i.e 
+# For 2D polytopes, this will always be positive. For 3D polytopes, i.e
 # faces of a polyhedron, the orientation can also be negative.
 function get_vertex_permutations(p::GeneralPolytope{2})
   base = collect(1:num_vertices(p))
@@ -782,7 +818,7 @@ end
 Given a polyhedron graph, renumber the nodes of the graph using the `new_to_old` mapping. 
 Removes the empty nodes.
 """
-function renumber!(graph::Vector{Vector{Int32}},new_to_old::Vector{Int},n_old::Int)
+function renumber!(graph::Vector{Vector{Int32}},new_to_old::Vector{<:Integer},n_old::Int)
   old_to_new = find_inverse_index_map(new_to_old,n_old)
   !isequal(n_old,length(new_to_old)) && keepat!(graph,new_to_old)
   for i in eachindex(graph)
@@ -957,29 +993,94 @@ function polyhedron_from_faces(
   face_to_vertex::AbstractVector{<:AbstractVector{<:Integer}}
 )
   n = length(vertices)
-  graph = [Int32[] for i in 1:n]
 
+  paths = [Dict{Int32,Int32}() for i in 1:n]
   for f in face_to_vertex
     nf = length(f)
     for k in eachindex(f)
       vprev, v, vnext = f[mod(k-2,nf)+1], f[k], f[mod(k,nf)+1]
-      kprev = findfirst(isequal(vprev),graph[v])
-      knext = findfirst(isequal(vnext),graph[v])
-      if isnothing(kprev) && isnothing(knext)
-        push!(graph[v],vprev,vnext)
-      elseif isnothing(kprev)
-        kprev = max(knext - 1, 1)
-        insert!(graph[v],kprev,vprev)
-      elseif isnothing(knext)
-        knext = kprev + 1
-        insert!(graph[v],knext,vnext)
-      else
-        nv = length(graph[v])
-        @assert isequal(knext, mod(kprev,nv) + 1)
-      end
+      # println("v: $v, vprev: $vprev, vnext: $vnext")
+      # if haskey(paths[v],vprev)
+      #   println(paths[v])
+      #   println("v: $v, vprev: $vprev, vnext: $vnext")
+      # end
+      @check !haskey(paths[v],vprev)
+      paths[v][vprev] = vnext
     end
+  end
+
+  graph = Vector{Vector{Int32}}(undef,n)
+  for v in 1:n
+    graph[v] = Vector{Int32}(undef, length(paths[v]))
+    #println("paths[$v]: ", paths[v])
+    vstart = first(keys(paths[v]))
+
+    k = 1
+    vcurrent = paths[v][vstart]
+    graph[v][1] = vstart
+    while vcurrent != vstart
+      k += 1
+      graph[v][k] = vcurrent
+      vcurrent = paths[v][vcurrent]
+    end
+    @assert k == length(graph[v])
   end
 
   @check check_polytope_graph(graph)
   return Polyhedron(vertices,graph), Base.OneTo(n)
+end
+
+# JORDI: 
+# The below implementation fails depending on the order 
+# of the inputed faces, when more than 3 faces meet at a vertex.
+#
+# function polyhedron_from_faces(
+#   vertices::AbstractVector{<:Point},
+#   face_to_vertex::AbstractVector{<:AbstractVector{<:Integer}}
+# )
+#   n = length(vertices)
+#   graph = [Int32[] for i in 1:n]
+# 
+#   for f in face_to_vertex
+#     nf = length(f)
+#     for k in eachindex(f)
+#       vprev, v, vnext = f[mod(k-2,nf)+1], f[k], f[mod(k,nf)+1]
+#       kprev = findfirst(isequal(vprev),graph[v])
+#       knext = findfirst(isequal(vnext),graph[v])
+#       if isnothing(kprev) && isnothing(knext)
+#         push!(graph[v],vprev,vnext)
+#       elseif isnothing(kprev)
+#         insert!(graph[v],knext,vprev) # Moves vnext to knext+1
+#       elseif isnothing(knext)
+#         insert!(graph[v],kprev+1,vnext)
+#       else
+#         nv = length(graph[v])
+#         @assert isequal(knext, mod(kprev,nv) + 1)
+#       end
+#     end
+#   end
+# 
+#   @check check_polytope_graph(graph)
+#   return Polyhedron(vertices,graph), Base.OneTo(n)
+# end
+
+# Extrude a 2D polygon into a 3D polyhedron
+function extrude(p::Polygon; zmin = 0.0, zmax = 1.0)
+  # Vertex coordinates
+  f(x,z) = Point(x[1], x[2], z)
+  coords_2D = get_vertex_coordinates(p)  
+  coords_3D = vcat(
+    map(Base.Fix2(f, zmin), coords_2D)...,
+    map(Base.Fix2(f, zmax), coords_2D)...,
+  )
+  # Graph
+  nv = num_vertices(p)
+  graph_2D = get_graph(p)
+  graph_3D = Vector{Vector{Int32}}(undef, 2*nv)
+  for v in 1:nv
+    vprev, vnext = graph_2D[v]
+    graph_3D[v] = Int32[vprev, vnext, v+nv]
+    graph_3D[v+nv] = Int32[vprev+nv, v, vnext+nv]
+  end
+  return Polyhedron(coords_3D, graph_3D)
 end
