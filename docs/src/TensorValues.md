@@ -34,6 +34,15 @@ C = inner.(g,B) # inner product of g against all TensorValues in the array B
 # C = [2494 2494 2494 2494 2494]
 ```
 
+For contractions between vectors and tensors, use `\cdot` (simple contraction) or `\odot` (full contraction)
+instead of `*` (no longer defined for these types)
+Example: For a Hessian `H` and normal vector `n`, the scalar second derivative in the normal direction can be written as
+```julia
+
+∂nn(v,n) = n ⋅ (H(v) ⋅ n)
+∂nn(v,n) = n ⊙ outer(n,n)
+```
+
 To create a [`::MultiValue`](@ref) tensor from components, these should be given
 as separate arguments or all gathered in a `tuple`. The order of the arguments
 is the order of the linearized Cartesian indices of the corresponding array
