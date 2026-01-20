@@ -273,17 +273,16 @@ end
 
 # We want to check that each face creates a half-space that 
 # contains all other vertices.
-function is_convex(p::Polyhedron)
-  tol = 10*eps(Float64)
+function is_convex(p::Polyhedron,tol=1e3*eps(Float64))
   coords = get_vertex_coordinates(p)
   f_to_v = get_faces(p,2,0)
-  normals = get_facet_normal(p)
   for (f, v) in enumerate(f_to_v)
     xc = mean(coords[v])
-    nf = normals[f]
-    for x in coords
+    nf = get_facet_normal(p,f)
+    for (i,x) in enumerate(coords)
       # nf is outward, so we want <= 0
-      (dot(nf,x-xc) > tol) && return false
+      dist = dot(nf,x-xc)
+      (dist > tol) && return false
     end
   end
   return true
@@ -344,9 +343,46 @@ function get_facet_orientations(p::GeneralPolytope)
   ones(Int,num_facets(p))
 end
 
+# Implements Newell's method to compute the normal of a facet. 
+# It is supposed to be more robust w.r.t numerical errors.
+function _newell_normal(
+  verts::AbstractVector{<:Integer},
+  coords::AbstractVector{<:Point{3}}
+)
+  nv = length(verts)
+  nx, ny, nz = 0.0, 0.0, 0.0
+  for i1 in 1:nv
+    i2 = i1 % nv + 1
+    x1, y1, z1 = coords[verts[i1]]
+    x2, y2, z2 = coords[verts[i2]]
+    nx += (y1 - y2)*(z1 + z2)
+    ny += (z1 - z2)*(x1 + x2)
+    nz += (x1 - x2)*(y1 + y2)
+  end
+  n = VectorValue(nx,ny,nz)
+  n /= norm(n)
+  return n
+end
+
 function get_facet_normal(p::Polyhedron)
-  D = 3
-  f_to_v = get_faces(p,D-1,0)
+  f_to_v = get_faces(p,2,0)
+  coords = get_vertex_coordinates(p)
+  n = map(f_to_v) do v
+    _newell_normal(v,coords)
+  end
+  return n
+end
+
+function get_facet_normal(p::Polyhedron,lfacet::Integer)
+  v = get_faces(p,2,0)[lfacet]
+  coords = get_vertex_coordinates(p)
+  n = _newell_normal(v,coords)
+  return n
+end
+
+#=
+function get_facet_normal(p::Polyhedron)
+  f_to_v = get_faces(p,2,0)
   coords = get_vertex_coordinates(p)
   map(f_to_v) do v
     v1, v2 = compute_tangent_space(Val(2),coords[v])
@@ -354,7 +390,6 @@ function get_facet_normal(p::Polyhedron)
     n /= norm(n)
   end
 end
-
 function get_facet_normal(p::Polyhedron,lfacet::Integer)
   v = get_faces(p,2,0)[lfacet]
   coords = get_vertex_coordinates(p)
@@ -363,6 +398,7 @@ function get_facet_normal(p::Polyhedron,lfacet::Integer)
   n /= norm(n)
   return n
 end
+=#
 
 function compute_tangent_space(::Val{1},coords;tol=1e-10)
   v1 = coords[2]-coords[1]
@@ -600,27 +636,28 @@ end
 
 function generate_facet_to_vertices(poly::Polyhedron)
   D = 3
-  istouch = map( i -> falses(length(i)), get_graph(poly) )
   T = Vector{Int32}[]
+  G = get_graph(poly)
+  istouch = map( i -> falses(length(i)), G )
   for v in 1:num_vertices(poly)
     isactive(poly,v) || continue
-    for i in 1:length(get_graph(poly)[v])
+    for i in 1:length(G[v])
       !istouch[v][i] || continue
       istouch[v][i] = true
       vcurrent = v
-      vnext = get_graph(poly)[v][i]
+      vnext = G[v][i]
       vnext > 0 || continue
       k = [v]
       while vnext != v
-        inext = findfirst( isequal(vcurrent), get_graph(poly)[vnext] )
-        inext = ( inext % length( get_graph(poly)[vnext] ) ) + 1
+        inext = findfirst( isequal(vcurrent), G[vnext] )
+        inext = ( inext % length( G[vnext] ) ) + 1
         istouch[vnext][inext] = true
         vcurrent = vnext
-        vnext = get_graph(poly)[vnext][inext]
+        vnext = G[vnext][inext]
         vnext > 0 || break
         push!(k,vcurrent)
       end
-      if length(k) >=D
+      if length(k) >= D
         push!(T,k)
       end
     end
@@ -790,7 +827,7 @@ function get_vertex_permutations(p::GeneralPolytope{2})
 end
 
 """
-    merge_nodes!(graph::Vector{Vector{Int32}},i::Int,j::Int)
+    merge_nodes!(graph::Vector{Vector{Int32}},i::Integer,j::Integer)
 
 Given a polyhedron graph, i.e a planar graph with oriented closed paths representing the faces,
 merge the nodes `i` and `j` by collapsing the edge `i-j` into `i`.
@@ -806,9 +843,40 @@ function merge_nodes!(graph::Vector{Vector{Int32}},i,j,li,lj)
   ni, nj = graph[i], graph[j]
   graph[i] = unique!(vcat(ni[1:li-1],nj[lj+1:end],nj[1:lj-1],ni[li+1:end]))
   for k in nj
-    !isequal(k,i) && unique!(replace!(graph[k], j => i))
+    if (k > 0) && !isequal(k,i)
+      unique!(replace!(graph[k], j => i))
+    end
   end
   empty!(graph[j])
+  return graph
+end
+
+# Insert a new node in the edge (vprev,vnext)
+function split_edge!(graph::Vector{Vector{Int32}},i,j)
+  li::Int = findfirst(isequal(j),graph[i])
+  lj::Int = findfirst(isequal(i),graph[j])
+  k = Int32(length(graph)+1)
+  graph[i][li] = k
+  graph[j][lj] = k
+  push!(graph,Int32[i,j])
+  return graph
+end
+
+function remove_edge!(graph::Vector{Vector{Int32}},i,j)
+  li::Int = findfirst(isequal(j),graph[i])
+  lj::Int = findfirst(isequal(i),graph[j])
+  deleteat!(graph[i],li)
+  deleteat!(graph[j],lj)
+  return graph
+end
+
+function remove_node!(graph::Vector{Vector{Int32}},i)
+  for j in graph[i]
+    (j > 0) || continue
+    lj::Int = findfirst(isequal(i),graph[j])
+    deleteat!(graph[j],lj)
+  end
+  empty!(graph[i])
   return graph
 end
 
@@ -820,10 +888,13 @@ Removes the empty nodes.
 """
 function renumber!(graph::Vector{Vector{Int32}},new_to_old::Vector{<:Integer},n_old::Int)
   old_to_new = find_inverse_index_map(new_to_old,n_old)
-  !isequal(n_old,length(new_to_old)) && keepat!(graph,new_to_old)
+  if !isequal(n_old,length(new_to_old)) && isequal(n_old,length(graph))
+    keepat!(graph,new_to_old)
+  end
   for i in eachindex(graph)
     ni = graph[i]
     for k in eachindex(ni)
+      (ni[k] > 0) || continue
       ni[k] = old_to_new[ni[k]]
     end
   end
