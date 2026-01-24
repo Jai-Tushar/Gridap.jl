@@ -35,32 +35,6 @@ function swap_field_ids(u::MultiField.MultiFieldFEBasisComponent, id, nfields)
   return MultiField.MultiFieldFEBasisComponent(u.single_field, id, nfields)
 end
 
-# function swap_field_ids(u::Gridap.FESpaces.SingleFieldFEBasis, id, nfields)
-#   return  MultiField.MultiFieldFEBasisComponent(u, id, nfields)
-# end
-
-# function projection_operator_adjoint(V, Ω, dΩ)
-#   Π(u,Ω) = change_domain(u,Ω,DomainStyle(u))
-#   mass(u,v) = ∫(u⋅Π(v,Ω))dΩ
-#   V0 = FESpaces.FESpaceWithoutBCs(V)
-#   P = FESpaces.LocalOperator(
-#     FESpaces.LocalSolveMap(), V0, mass, mass; trian_out = Ω
-#   )
-#   _P(u) = swap_field_ids(CellData.similar_cell_field(u.single_field,get_data(P(u)), get_triangulation(P(u)), ReferenceDomain()),3,4)
-#   return _P
-# end
-
-# function projection_operator_adjoint(V, Ω, dΩ)
-#   Π(u,Ω) = change_domain(u,Ω,DomainStyle(u))
-#   mass(u,v) = ∫(u⋅Π(v,Ω))dΩ
-#   V0 = FESpaces.FESpaceWithoutBCs(V)
-#   P = FESpaces.LocalOperator(
-#     FESpaces.LocalSolveMap(), V0, mass, mass; trian_out = Ω
-#   )
-#   _P(u) = swap_field_ids(CellData.similar_cell_field(u.single_field,get_data(P(u)), get_triangulation(P(u)), ReferenceDomain()),4,4)
-#   return _P
-# end
-
 function projection_operator(V, Ω, dΩ)
   Π(u,Ω) = change_domain(u,Ω,DomainStyle(u))
   mass(u,v) = ∫(u⋅Π(v,Ω))dΩ
@@ -105,7 +79,7 @@ function reconstruction_operator_adjoint(ptopo,L,X,Ω,Γp,dΩp,dΓp)
   mfs = Y.multi_field_style
   W = MultiFieldFESpace([L,Λ];style=mfs)
   R = FESpaces.LocalOperator(
-    FESpaces.HHO_ReconstructionOperatorMap(), ptopo, W, Y, lhs, rhs; space_out = L
+    FESpaces.LocalPenaltySolveMap(), ptopo, W, Y, lhs, rhs; space_out = L
   )
   _R(u) = swap_field_ids(R(swap_field_ids(u,[1,2],2)),[2,4],4)
   return _R
@@ -194,11 +168,11 @@ end
 hTinv =  CellField(1 ./ (sqrt(2).*sqrt.(get_array(∫(1)dΩp))),Ωp)
 function ss(u,v)
   function SΓs(u)
-    u_Ω, u_Γ = u
-    cs = PΓs(u_Ω)
+    uΩ, uΓ = u
+    cs = PΓs(uΩ)
     cs_basis = CellData.similar_cell_field(uΩ.single_field, get_data(cs), get_triangulation(cs), ReferenceDomain())
     PΓs_uΩ = swap_field_ids(cs_basis, 3, 4)
-    return PΓs_uΩ - u_Γ
+    return PΓs_uΩ - uΓ
   end
   return ∫(hTinv * (SΓs(u)⋅SΓs(v)))dΓp
 end
@@ -287,7 +261,7 @@ tol = 1e-8
 max_iter = 15
 
 wh = FEFunction(X, zeros(num_free_dofs(X))); # initial guess satisfying boundary conditions
-op = MultiField.StaticCondensationOperator(X,patch_assem,patch_weakform(X,Y,wh))
+@run op = MultiField.StaticCondensationOperator(X,patch_assem,patch_weakform(X,Y,wh))
 xh = solve(op)
 
 yI, pI, yb, pb = xh;
@@ -302,95 +276,4 @@ sol = solve_KKT(wh,tol,max_iter)
 
 
 
-
-# ###############
-
-# us, pa = (x[1],x[3]), (x[2],x[4])
-# vs, va = (y[1],y[3]), (y[2],y[4])
-
-
-# y0Ω, p0Ω, y0Γ, p0Γ = wh
-# as(us,vs)
-# aa(us,pa,va)
-# ss(us,vs)
-# sa(pa,va)
-
-# Rs(us)
-
-
-# uΩ, uΓ = us;
-# vΩ, vΓ = vs;
-
-# sf_data = get_data(PΓs(uΩ))
-# sf = FESpaces.similar_fe_basis(uΩ.single_field,sf_data,PΓs.trian_out,BasisStyle(uΩ),DomainStyle(get_fe_basis(PΓs.space_out)))
-# PΓs_uΩ = MultiField.MultiFieldFEBasisComponent(sf,3,4)
-
-# _sf_data = get_data(PΓs(vΩ))
-# _sf = FESpaces.similar_fe_basis(vΩ.single_field,_sf_data,PΓs.trian_out,BasisStyle(vΩ),DomainStyle(get_fe_basis(PΓs.space_out)))
-# PΓs_vΩ = MultiField.MultiFieldFEBasisComponent(_sf,3,4)
-
-# SΓs_u = PΓs_uΩ - uΓ 
-# SΓs_v = PΓs_vΩ - vΓ
-
-# ∫(SΓs_u * SΓs_v)dΓp
-
-# u = uΩ
-# nfields, fieldid = u.nfields, u.fieldid
-# # block_fields(fields,::TestBasis) = lazy_map(BlockMap(nfields,fieldid),fields)
-# # block_fields(fields,::TrialBasis) = lazy_map(BlockMap((1,nfields),fieldid),fields)
-
-# sf = evaluate!(nothing,FESpaces.LocalOperator(),u.single_field)
-# data = block_fields(CellData.get_data(sf),BasisStyle(u.single_field))
-# return CellData.similar_cell_field(sf,data)
-
-
-# #################
-
-# uΩ, uΓ = us
-# vΩ, vΓ = vs
-# pΩ, pΓ = pa
-# wΩ, wΓ = va
-
-# function SΓ(u)
-#   u_Ω, u_Γ = u
-#   # cs = PΓs(u_Ω)
-#   # cs_basis = CellData.similar_cell_field(uΩ.single_field, get_data(cs), get_triangulation(cs), ReferenceDomain())
-#   # PΓs_uΩ = swap_field_ids(cs_basis, 3, 4)
-#   # return PΓs_uΩ - u_Γ
-#   return PΓs(u_Ω) - u_Γ
-# end
-
-# cf_1 = SΓ(us)*SΓ(pa) 
-# ∫(cf_1)dΓp 
-
-# function SΓs(u)
-#   u_Ω, u_Γ = u
-#   cs = PΓs(u_Ω) 
-#   cs_basis = CellData.similar_cell_field(uΓ.single_field, get_data(cs), get_triangulation(cs), ReferenceDomain())
-#   PΓs_uΩ = swap_field_ids(cs_basis, 3, 4)
-#   return PΓs_uΩ - u_Γ
-# end
-
-# cs = PΓs(uΩ) 
-# cs_basis = CellData.similar_cell_field(uΓ.single_field, get_data(cs), get_triangulation(cs), ReferenceDomain())
-# PΓs_uΩ = swap_field_ids(cs_basis, 3, 4)
-# PΓs_uΩ = swap_field_ids(cs, 3, 4)
-
-# ubasis = CellData.similar_cell_field(PΓs(uΩ), get_data(PΓs(uΩ)), get_triangulation(PΓs(uΩ)), ReferenceDomain())
-
-# function swap_field_ids(u::GenericCellField, id, nfields)
-#   u_basis = CellData.similar_cell_field(u, get_data(u), get_triangulation(u), ReferenceDomain())
-#   return  MultiField.MultiFieldFEBasisComponent(u_basis, id, nfields)
-# end
-
-# # ∫(SΓs(us)*SΓs(vs))dΓp
-# # PΓa(pΩ)
-
-# # cs = PΓs(uΩ)
-# cs_basis = CellData.similar_cell_field(uΩ.single_field, get_data(cs), get_triangulation(cs), ReferenceDomain())
-# # PΓs_uΩ = swap_field_ids(cs_basis, 3, 4)
-
-# # ca = PΓa(pΩ)
-# # ca_basis = CellData.similar_cell_field(pΩ.single_field, get_data(ca), get_triangulation(ca), ReferenceDomain())
-# # PΓa_pΩ = swap_field_ids(ca_basis, 4, 4)
 

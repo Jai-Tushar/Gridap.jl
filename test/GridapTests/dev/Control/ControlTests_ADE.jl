@@ -1,6 +1,5 @@
 using Gridap
 using Gridap.ReferenceFEs, Gridap.FESpaces, Gridap.Fields
-using DrWatson
 
 
 function variational(domain, cells, order, yex, pex, zex)
@@ -32,8 +31,7 @@ function variational(domain, cells, order, yex, pex, zex)
 
   _Proj(p) = _max(za, _min(zb, (-1/λ) * p))
 
-  res( (y,p),(v,s) ) = ∫(∇(y)⋅∇(v))dΩ - ∫(f*v)dΩ - ∫((_Proj∘p)*v)dΩ + ∫(∇(p)⋅∇(s))dΩ - ∫(y*s)dΩ + ∫(yd*s)dΩ
-  # res( (y,p),(v,s) ) = ∫(∇(y)⋅∇(v))dΩ - ∫(f*v)dΩ - ∫(_Proj(p)*v)dΩ + ∫(∇(p)⋅∇(s))dΩ - ∫(y*s)dΩ + ∫(yd*s)dΩ
+  res( (y,p),(v,s) ) = ∫(∇(y)⋅∇(v))dΩ - ∫(f*v)dΩ - ∫((_Proj∘p)*v)dΩ + ∫(∇(p)⋅∇(s))dΩ - ∫((y-yd)*s)dΩ
 
   # Initial guess of free dofs
   wh = FEFunction(X, zeros(num_free_dofs(X)))
@@ -69,10 +67,9 @@ function variational(domain, cells, order, yex, pex, zex)
   end
 
 
-  # optimal solution
+  # postprocess optimal control
   yh, ph = wh
   zh = _Proj∘(ph)
-  # zh = _Proj(ph)
 
   ey = yh - yex
   ep = ph - pex
@@ -119,13 +116,13 @@ end
 
 za = -5 
 zb = 5 
-λ = 0.001
+λ = 0.01
 
 yex(x) = sin(π*x[1])*sin(π*x[2])
 pex(x) = -2*pi^2*sin(π*x[1])*sin(π*x[2])
 zex(x) = max( za, min( zb, -(1/λ) * pex(x) ) )
 
-order  = 2
+order  = 1
 domain = (0,1,0,1)
 ncs = [(2,2),(4,4),(8,8),(16,16),(32,32),(64,64),(128,128)]
 
@@ -133,17 +130,13 @@ el2ys, el2ps, el2zs, hs, ndofs = convg_test(domain, ncs, order, yex, pex, zex);
 
 
 println("L2-error yΩ: ", el2ys)
-println("Slope L2-norm state: $(2*slope(ndofs,el2ys))")
 println("Slope L2-norm state: $(slope(hs,el2ys))")
 
 println("L2-error pΩ: ", el2ps)
-println("Slope L2-norm adjoint: $(2*slope(ndofs,el2ps))")
-println("Slope L2-norm state: $(slope(hs,el2ps))")
+println("Slope L2-norm adjoint: $(slope(hs,el2ps))")
 
 println("L2-error zΩ: ", el2zs)
-println("Slope L2-norm control: $(2*slope(ndofs,el2zs))")
-println("Slope L2-norm state: $(slope(hs,el2zs))")
-
+println("Slope L2-norm control: $(slope(hs,el2zs))")
 
 el2_y, el2_p, el2_z, dofs, opt_z = variational(domain, (128,128), order, yex, pex, zex)
 Ω = get_triangulation(opt_z)
