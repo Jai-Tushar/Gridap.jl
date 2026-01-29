@@ -13,10 +13,10 @@ end
 #
 # For most problems, the split version is faster because the ForwardDiff
 # chunk size is smaller. In addition, the split version allows for fields to
-# ve defined on different triangulations.
+# be defined on different triangulations.
 #
 # TODO: Currently, this is only implemented for the gradient and jacobian.
-#  The Hessian is proplematic because the off-diagonal blocks are missed.
+#  The Hessian is problematic because the off-diagonal blocks are missed.
 for (op,_op) in ((:gradient,:_gradient),(:jacobian,:_jacobian))
   @eval begin
     function FESpaces.$(op)(f::Function,uh::MultiFieldFEFunction;ad_type=:split)

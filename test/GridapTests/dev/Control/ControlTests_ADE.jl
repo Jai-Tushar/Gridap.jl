@@ -2,7 +2,7 @@ using Gridap
 using Gridap.ReferenceFEs, Gridap.FESpaces, Gridap.Fields
 
 
-function variational(domain, cells, order, yex, pex, zex)
+# function variational(domain, cells, order, yex, pex, zex)
 
   f(x) = -Δ(yex)(x) - zex(x)
   yd(x) = yex(x) + Δ(pex)(x)
@@ -31,7 +31,7 @@ function variational(domain, cells, order, yex, pex, zex)
 
   _Proj(p) = _max(za, _min(zb, (-1/λ) * p))
 
-  res( (y,p),(v,s) ) = ∫(∇(y)⋅∇(v))dΩ - ∫(f*v)dΩ - ∫((_Proj∘p)*v)dΩ + ∫(∇(p)⋅∇(s))dΩ - ∫((y-yd)*s)dΩ
+  res( (y,p),(v,s) ) = ∫(∇(y)⋅∇(v))dΩ - ∫(f*v)dΩ - ∫((_Proj(p))*v)dΩ + ∫(∇(p)⋅∇(s))dΩ - ∫((y-yd)*s)dΩ
 
   # Initial guess of free dofs
   wh = FEFunction(X, zeros(num_free_dofs(X)))
@@ -46,30 +46,27 @@ function variational(domain, cells, order, yex, pex, zex)
   tol = 1e-8
   max_iter = 10
 
-  while Er > tol && iter < max_iter
-    iter += 1
-    J = jacobian(res_jac, wh)
+  # while Er > tol && iter < max_iter
+  #   iter += 1
+    @enter J = jacobian(res_jac, wh; ad_type=:monolithic)
     r = res_jac(wh)
     data = collect_cell_matrix_and_vector(X,Y,J,r,zero(X))
     A,b = assemble_matrix_and_vector(assem,data)
 
     # x_{n+1} = x_n - J^{-1} * r, where δsol = J^{-1} * r
-    δwh = A \ b
-    δwh = FEFunction(X, δwh)
-    wh = FEFunction(X, wh.free_values - δwh.free_values)
-    δyh, δph = δwh
-    Er = sqrt(sum(∫((δyh * δyh) + (δph * δph))*dΩ))
+  #   δwh = A \ b
+  #   δwh = FEFunction(X, δwh)
+  #   wh = FEFunction(X, wh.free_values - δwh.free_values)
+  #   δyh, δph = δwh
+  #   Er = sqrt(sum(∫((δyh * δyh) + (δph * δph))*dΩ))
 
-    # wh = wh.free_values - δwh
-    # wh = FEFunction(X, wh)
-    # Er = norm(δwh)
-    @info "Iteration: $iter, Residual: $Er"
-  end
+  #   @info "Iteration: $iter, Residual: $Er"
+  # end
 
 
   # postprocess optimal control
   yh, ph = wh
-  zh = _Proj∘(ph)
+  zh = _Proj(ph)
 
   ey = yh - yex
   ep = ph - pex
@@ -82,9 +79,9 @@ function variational(domain, cells, order, yex, pex, zex)
 
   dofs = num_free_dofs(X)
 
-  return el2_yh, el2_ph, el2_zh, dofs, zh
+#   return el2_yh, el2_ph, el2_zh, dofs, zh
 
-end
+# end
 
 function slope(hs,errors)
   x = log10.(hs)
@@ -114,17 +111,17 @@ function convg_test(domain,ncs,order,yex, pex, zex)
 end
 
 
-za = -5 
-zb = 5 
-λ = 0.01
-
-yex(x) = sin(π*x[1])*sin(π*x[2])
-pex(x) = -2*pi^2*sin(π*x[1])*sin(π*x[2])
-zex(x) = max( za, min( zb, -(1/λ) * pex(x) ) )
+yex(x) = sin(2π*x[1])*sin(2π*x[2])
+# pex(x) = -10*x[1]*(x[1]-1)*x[2]*(x[2]-1)
+pex(x) = -10*sin(pi*x[1])*sin(pi*x[2])
+const za = -5; const zb = 5; const λ = 0.1
+zex(x) = max( za, min(zb, -(1/λ) * pex(x)) )
+f(x) = -Δ(yex)(x) - zex(x)
+yd(x) = yex(x) + Δ(pex)(x)
 
 order  = 1
 domain = (0,1,0,1)
-ncs = [(2,2),(4,4),(8,8),(16,16),(32,32),(64,64),(128,128)]
+ncs = [(2,2),(4,4),(8,8),(16,16),(32,32),(64,64),(128,128),(256,256)]
 
 el2ys, el2ps, el2zs, hs, ndofs = convg_test(domain, ncs, order, yex, pex, zex);
 
@@ -138,6 +135,6 @@ println("Slope L2-norm adjoint: $(slope(hs,el2ps))")
 println("L2-error zΩ: ", el2zs)
 println("Slope L2-norm control: $(slope(hs,el2zs))")
 
-el2_y, el2_p, el2_z, dofs, opt_z = variational(domain, (128,128), order, yex, pex, zex)
+el2_y, el2_p, el2_z, dofs, opt_z = variational(domain, (64,64), order, yex, pex, zex)
 Ω = get_triangulation(opt_z)
 writevtk(Ω, "optimal_control", cellfields=["optimal_control" => opt_z];append=false)

@@ -44,7 +44,7 @@ end
 
 #######################################
 
-function variational_hho(domain, nc, order, yex, pex, zex, f, yd, za, zb)
+# function variational_hho(domain, nc, order, yex, pex, zex, f, yd, za, zb)
 
   model = UnstructuredDiscreteModel(CartesianDiscreteModel(domain,nc))
   D = num_cell_dims(model)
@@ -106,6 +106,10 @@ function variational_hho(domain, nc, order, yex, pex, zex, f, yd, za, zb)
     Rv_Ω, Rv_Γ = Rs(v)
     return ∫(∇(Ru_Ω)⋅∇(Rv_Ω) + ∇(Ru_Γ)⋅∇(Rv_Ω) + ∇(Ru_Ω)⋅∇(Rv_Γ) + ∇(Ru_Γ)⋅∇(Rv_Γ))dΩp
   end
+
+  du, dv = get_trial_fe_basis(Xs), get_fe_basis(Ys)
+  wh = FEFunction(Xs, zeros(num_free_dofs(Xs)))
+  Gridap.FESpaces.get_cell_dof_values(wh)
 
   function aa(u,v)
     Ru_Ω, Ru_Γ = Ra(u)
@@ -202,8 +206,8 @@ function variational_hho(domain, nc, order, yex, pex, zex, f, yd, za, zb)
   el2pΩ = sqrt( sum( ∫(ep * ep)*dΩp ) )
   el2zΩ = sqrt( sum( ∫(ez * ez)*dΩp ) )
 
-  return el2yΩ, el2pΩ, el2zΩ, hT
-end
+#   return el2yΩ, el2pΩ, el2zΩ, hT
+# end
 
 function convg_test(domain, ncs, order, yex, pex, zex, f, yd, za, zb)
   el2ys = []
