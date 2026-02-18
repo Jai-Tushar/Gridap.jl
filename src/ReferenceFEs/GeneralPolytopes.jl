@@ -259,14 +259,39 @@ is_simplex(::GeneralPolytope) = false
 
 is_n_cube(::GeneralPolytope) = false
 
-function is_convex(p::Polygon)
-  tol = 10*eps(Float64)
-  coords = get_vertex_coordinates(p)
+function is_convex(p::Polygon{2},tol=1.e3*eps(Float64))
   G = get_graph(p)
+  coords = get_vertex_coordinates(p)
+  orientation = 0
   for (v,(vprev,vnext)) in enumerate(G)
     ein  = coords[v] - coords[vprev]
     eout = coords[vnext] - coords[v]
-    (dot(ein,eout) > tol) && return false
+    cp = cross(ein,eout)
+    abs(cp) < tol && continue
+    if iszero(orientation)
+      orientation = sign(cp)
+    elseif sign(cp) != orientation
+      return false
+    end
+  end
+  return true
+end
+
+function is_convex(p::Polygon{3},tol=1.e3*eps(Float64))
+  G = get_graph(p)
+  coords = get_vertex_coordinates(p)
+  n = get_cell_normal(p)
+  orientation = 0
+  for (v,(vprev,vnext)) in enumerate(G)
+    ein  = coords[v] - coords[vprev]
+    eout = coords[vnext] - coords[v]
+    cp = dot(cross(ein,eout),n)
+    abs(cp) < tol && continue
+    if iszero(orientation)
+      orientation = sign(cp)
+    elseif sign(cp) != orientation
+      return false
+    end
   end
   return true
 end
@@ -288,11 +313,23 @@ function is_convex(p::Polyhedron,tol=1e3*eps(Float64))
   return true
 end
 
-function simplexify(p::GeneralPolytope{D}) where D
+function simplexify(p::Polyhedron)
   @assert !isopen(p)
   X,T = simplexify_interior(p)
   @check X == get_vertex_coordinates(p)
-  T, simplex_polytope(Val{D}())
+  T, simplex_polytope(Val{3}())
+end
+
+function simplexify(p::Polygon)
+  @assert !isopen(p)
+  X, C = convexify_interior(p)
+  @check X == get_vertex_coordinates(p)
+  T = Vector{Int32}[]
+  for Ci in C
+    Ti = _simplexify_cycle(Ci)
+    append!(T,Ti)
+  end
+  T, simplex_polytope(Val{2}())
 end
 
 simplex_polytope(::Val{0}) = VERTEX
@@ -346,8 +383,8 @@ end
 # Implements Newell's method to compute the normal of a facet. 
 # It is supposed to be more robust w.r.t numerical errors.
 function _newell_normal(
-  verts::AbstractVector{<:Integer},
-  coords::AbstractVector{<:Point{3}}
+  coords::AbstractVector{<:Point{3}},
+  verts::AbstractVector{<:Integer} = eachindex(coords)
 )
   nv = length(verts)
   nx, ny, nz = 0.0, 0.0, 0.0
@@ -359,8 +396,7 @@ function _newell_normal(
     ny += (z1 - z2)*(x1 + x2)
     nz += (x1 - x2)*(y1 + y2)
   end
-  n = VectorValue(nx,ny,nz)
-  n /= norm(n)
+  n = normalize(VectorValue(nx,ny,nz))
   return n
 end
 
@@ -368,7 +404,7 @@ function get_facet_normal(p::Polyhedron)
   f_to_v = get_faces(p,2,0)
   coords = get_vertex_coordinates(p)
   n = map(f_to_v) do v
-    _newell_normal(v,coords)
+    _newell_normal(coords,v)
   end
   return n
 end
@@ -376,65 +412,14 @@ end
 function get_facet_normal(p::Polyhedron,lfacet::Integer)
   v = get_faces(p,2,0)[lfacet]
   coords = get_vertex_coordinates(p)
-  n = _newell_normal(v,coords)
+  n = _newell_normal(coords,v)
   return n
-end
-
-#=
-function get_facet_normal(p::Polyhedron)
-  f_to_v = get_faces(p,2,0)
-  coords = get_vertex_coordinates(p)
-  map(f_to_v) do v
-    v1, v2 = compute_tangent_space(Val(2),coords[v])
-    n = v1 × v2
-    n /= norm(n)
-  end
-end
-function get_facet_normal(p::Polyhedron,lfacet::Integer)
-  v = get_faces(p,2,0)[lfacet]
-  coords = get_vertex_coordinates(p)
-  v1, v2 = compute_tangent_space(Val(2),coords[v])
-  n = v1 × v2
-  n /= norm(n)
-  return n
-end
-=#
-
-function compute_tangent_space(::Val{1},coords;tol=1e-10)
-  v1 = coords[2]-coords[1]
-  v1 /= norm(v1)
-  return v1
-end
-
-function compute_tangent_space(::Val{D},coords;tol=1e-10) where D
-  np = length(coords)
-  p0 = first(coords)
-  k = 1
-  ns = 0
-  space = ()
-  while (ns < D) && (k < np)
-    v = coords[k+1]-p0
-    for vi in space
-      v -= (v⋅vi)*vi
-    end
-    w = norm(v)
-    if w > tol
-      space = (space...,v/w)
-      ns += 1
-    end
-    k += 1
-  end
-  @check ns == D "Tangent space cannot be computed! Too many colinear points"
-  return space
 end
 
 # Normal for a Polygon embedded in 3D space
 function get_cell_normal(p::Polygon{3})
   coords = get_vertex_coordinates(p)
-  v1, v2 = compute_tangent_space(Val(2),coords)
-  n = v1 × v2
-  n /= norm(n)
-  return n
+  return _newell_normal(coords)
 end
 
 # Normal for edges of a Polygon embedded in 2D space
@@ -484,6 +469,34 @@ function get_edge_tangent(p::GeneralPolytope,ledge::Integer)
   coords = get_vertex_coordinates(p)
   e = coords[v[2]]-coords[v[1]]
   return e / norm(e)
+end
+
+function compute_tangent_space(::Val{1},coords;tol=1e-10)
+  v1 = coords[2]-coords[1]
+  v1 /= norm(v1)
+  return v1
+end
+
+function compute_tangent_space(::Val{D},coords;tol=1e-10) where D
+  np = length(coords)
+  p0 = first(coords)
+  k = 1
+  ns = 0
+  space = ()
+  while (ns < D) && (k < np)
+    v = coords[k+1]-p0
+    for vi in space
+      v -= (v⋅vi)*vi
+    end
+    w = norm(v)
+    if w > tol
+      space = (space...,v/w)
+      ns += 1
+    end
+    k += 1
+  end
+  @check ns == D "Tangent space cannot be computed! Too many colinear points"
+  return space
 end
 
 function get_dimranges(p::GeneralPolytope)
@@ -701,25 +714,19 @@ end
 
 function simplexify_interior(p::Polygon)
   @assert !isopen(p)
-  e_to_v = generate_facet_to_vertices(p)
-  T = Vector{Int32}[]
-  if length(e_to_v) > 0
-    v0 = e_to_v[1][1]
-    for verts in e_to_v
-      if v0 ∉ verts
-        push!(T,[v0,verts[1],verts[2]])
-      end
-    end
-  end
-  get_vertex_coordinates(p),T
+  T = _simplexify_cycle(1:num_vertices(p))
+  get_vertex_coordinates(p), T
+end
+
+function _simplexify_cycle(v::AbstractVector{<:Integer})
+  return [Int32[v[1],v[i],v[i+1]] for i in 2:(length(v)-1)]
 end
 
 """
     simplexify_interior(p::Polyhedron)
 
-  `simplex_interior` computes a simplex partition of the volume inside
-  the Polyhedron `p`.
-  It returns a vector of coordinates and an array of connectivitties.
+Compute a simplex partition of the volume inside the Polyhedron `p`.
+It returns a vector of coordinates and an array of connectivitties.
 """
 function simplexify_interior(poly::Polyhedron)
   !isopen(poly) || return simplexify_surface(poly)
@@ -774,27 +781,27 @@ end
 """
     simplexify_surface(p::Polyhedron)
 
-  `simplex_surface` computes a simplex partition of the surface bounding
-  the Polyhedron `p`.
-  It returns a vector of coordinates and an array of connectivitties.
+Compute a simplex partition of the surface bounding the Polyhedron `p`.
+It returns a vector of coordinates and an array of connectivitties.
 """
 function simplexify_surface(poly::Polyhedron)
-  istouch = map( i -> falses(length(i)), get_graph(poly) )
+  G = get_graph(poly)
+  istouch = map( i -> falses(length(i)), G )
   T = Vector{Int32}[]
   for v in 1:num_vertices(poly)
     isactive(poly,v) || continue
-    for i in 1:length(get_graph(poly)[v])
+    for i in eachindex(G[v])
       !istouch[v][i] || continue
       istouch[v][i] = true
       vcurrent = v
-      vnext = get_graph(poly)[v][i]
+      vnext = G[v][i]
       vnext > 0 || continue
       while vnext != v
-        inext = findfirst( isequal(vcurrent), get_graph(poly)[vnext] )
-        inext = ( inext % length( get_graph(poly)[vnext] ) ) + 1
+        inext = findfirst( isequal(vcurrent), G[vnext] )
+        inext = ( inext % length( G[vnext] ) ) + 1
         istouch[vnext][inext] = true
         vcurrent = vnext
-        vnext = get_graph(poly)[vnext][inext]
+        vnext = G[vnext][inext]
         vnext > 0 || break
         if v ∉ (vcurrent,vnext)
           k = [v,vcurrent,vnext]
@@ -806,13 +813,60 @@ function simplexify_surface(poly::Polyhedron)
   get_vertex_coordinates(poly),T
 end
 
-function compute_orientation(p::GeneralPolytope{D}) where D
-  cc = mean(get_vertex_coordinates(p))
-  cf = mean(first(get_face_coordinates(p,D-1)))
-  n = get_facet_normal(p,1)
-  s = sign(dot(n,cf-cc))
-  return s
+"""
+    signed_area(poly)
+    signed_area(coords, indices)
+
+Compute the signed area of a polygon defined by indices into coords, using 
+the shoelace formula. In 3D, it returns the signed area vector.
+"""
+signed_area(p::Polygon) = signed_area( get_vertex_coordinates(p) )
+
+function signed_area(coords::Vector{<:Point{2}}, indices=eachindex(coords))
+  n = length(indices)
+  area = zero(eltype(eltype(coords)))
+  for i in 1:n
+    vi = coords[indices[i]]
+    vj = coords[indices[mod1(i + 1, n)]]
+    area += vi[1] * vj[2] - vj[1] * vi[2]
+  end
+  return area / 2
 end
+
+function signed_area(coords::Vector{<:Point{3}}, indices=eachindex(coords))
+  n = length(indices)
+  area = zero(eltype(coords))
+  for i in 1:n
+    vi = coords[indices[i]]
+    vj = coords[indices[mod1(i + 1, n)]]
+    area += cross(vi,vj)
+  end
+  return area / 2
+end
+
+"""
+    signed_volume(poly)
+    signed_volume(coords, faces)
+
+Compute the signed volume of a polyhedron using the divergence theorem. 
+"""
+function signed_volume(p::Polyhedron)
+  X, T = simplexify_surface(p)
+  signed_volume(X, T)
+end
+
+function signed_volume(coords::Vector{<:Point{3}}, faces)
+  vol = zero(eltype(eltype(coords)))
+  for f in faces
+    @check length(f) == 3 "Faces must be triangles to compute the signed volume"
+    v1, v2, v3 = coords[f[1]], coords[f[2]], coords[f[3]]
+    vol += dot(v1, cross(v2, v3))
+  end
+  return vol / 6
+end
+
+compute_orientation(p::Polygon) = signed_area(p) > 0
+compute_orientation(p::Polyhedron) = signed_volume(p) > 0
 
 # Admissible permutations for Polygons are the ones that
 # preserve the orientation of the circular graph that defines it.
@@ -1154,4 +1208,152 @@ function extrude(p::Polygon; zmin = 0.0, zmax = 1.0)
     graph_3D[v+nv] = Int32[vprev+nv, v, vnext+nv]
   end
   return Polyhedron(coords_3D, graph_3D)
+end
+
+# Convexification 
+
+"""
+    get_reflex_faces(p::GeneralPolytope) -> Vector{Int}
+
+Return local indices of reflex faces, i.e (D-2)-faces (vertices in 2D, edges in 3D) 
+where the internal angle is greater than π.
+"""
+get_reflex_faces(p::Polygon) = get_reflex_faces(get_vertex_coordinates(p))
+
+function get_reflex_faces(coords::Vector{<:Point{2}}, indices = eachindex(coords); tol=1e-10)
+  n = length(indices)
+  function is_reflex(i)
+    v = coords[indices[i]]
+    vprev = coords[indices[mod1(i - 1, n)]]
+    vnext = coords[indices[mod1(i + 1, n)]]
+    return cross(v - vprev, vnext - v) < -tol
+  end
+  return filter(is_reflex, 1:n)
+end
+
+"""
+    convexify(p::Polygon) -> Vector{Polygon}
+
+Decompose a possibly non-convex 2D polygon into a set of convex polygons.
+If the polygon is embedded in 3D, we run the algorithm after projecting to 2D.
+"""
+function convexify(p::Polygon)
+  is_convex(p) && return [p]
+  X, T = convexify_interior(p)
+  return [Polygon(X[v]) for v in T]
+end
+
+function convexify_interior(p::Polygon{2})
+  @check signed_area(p) > 0 "Polygon must have positive orientation"
+  coords = get_vertex_coordinates(p)
+  indices = collect(1:length(coords))
+  T = _convexify_interior!(Vector{Int}[], coords, indices)
+  return coords, T
+end
+
+function convexify_interior(p::Polygon{3})
+  coords = get_vertex_coordinates(p)
+  coords_2d = _project_to_plane(p)
+  @check signed_area(Polygon(coords_2d)) > 0 "Polygon must have positive orientation"
+  indices = collect(1:length(coords))
+  T = _convexify_interior!(Vector{Int}[], coords_2d, indices)
+  return coords, T
+end
+
+function _project_to_plane(p::Polygon{3})
+  n = get_cell_normal(p) |> normalize
+  imax = argmin(map(abs, n.data))
+  t = Point(ntuple(i -> i == imax ? 1.0 : 0.0, 3))
+  u = cross(t, n) |> normalize
+  v = cross(n, u) |> normalize
+
+  coords = get_vertex_coordinates(p)
+  coords_2d = map(coords) do p
+    d = p - coords[1]
+    Point(dot(d, u), dot(d, v))
+  end
+  return coords_2d
+end
+
+function _convexify_interior!(
+  T::Vector{<:Vector{<:Integer}}, coords::Vector{<:Point{2}}, indices::Vector{<:Integer}
+)
+  n = length(indices)
+  reflex = get_reflex_faces(coords, indices)
+
+  # Already convex
+  if (n == 3) || isempty(reflex)
+    push!(T, indices)
+    return T
+  end
+
+  # Try to find a valid diagonal from a reflex vertex
+  for r in reflex
+    v = _find_best_diagonal(coords, indices, r)
+    i, j = minmax(r, v)
+    _convexify_interior!(T, coords, indices[i:j])
+    _convexify_interior!(T, coords, vcat(indices[j:n], indices[1:i]))
+    return T
+  end
+
+  @assert false "Failed to convexify polygon"
+end
+
+function _find_best_diagonal(coords,indices,r;tol=1.e-10)
+  n = length(indices)
+  r_prev, r_next = mod1(r - 1, n), mod1(r + 1, n)
+  e_in = normalize(coords[indices[r]] - coords[indices[r_prev]])
+  e_out = normalize(coords[indices[r_next]] - coords[indices[r]])
+
+  v, α = 0, -Inf 
+  for k in eachindex(indices)
+    (k == r || k == r_prev || k == r_next) && continue
+
+    # Check if diagonal intersects any edge
+    m = 1
+    intersection = false
+    while !intersection && (m <= n)
+      m_next = mod1(m + 1, n)
+      if !(m == r || m_next == r || m == k || m_next == k)
+        t, u = _segment_intersection(
+          coords[indices[r]], coords[indices[k]],
+          coords[indices[m]], coords[indices[m_next]]; tol
+        )
+        intersection = (tol < t < 1 - tol) && (tol < u < 1 - tol)
+      end
+      m += 1
+    end
+    intersection && continue
+
+    # Get interior angles
+    e_rk = normalize(coords[indices[k]] - coords[indices[r]])
+    α_in, α_out = cross(e_in, e_rk), cross(e_out, e_rk)
+
+    # Check if k is inside the reflex angle at r
+    !(α_in > tol || α_out > tol) && continue
+
+    if α_in + α_out > α
+      v, α = k, α_in + α_out
+    end
+  end
+  @assert !iszero(v)
+
+  return v
+end
+
+# Compute the intersection of segments p1-p2 and q1-q2.
+# Returns parametric coordinates t and u such that:
+#   intersection = p1 + t * (p2 - p1) = q1 + u * (q2 - q1)
+# If segments are parallel, returns (Inf, Inf).
+function _segment_intersection(p1::Point{2}, p2::Point{2}, q1::Point{2}, q2::Point{2}; tol=1e-10)
+  d1 = p2 - p1
+  d2 = q2 - q1
+
+  denom = cross(d1, d2)
+  (abs(denom) < tol) && return Inf, Inf  # Parallel segments
+
+  d = q1 - p1
+  t = cross(d, d2) / denom
+  u = cross(d, d1) / denom
+  return t, u
 end
