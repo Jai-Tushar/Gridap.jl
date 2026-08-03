@@ -284,8 +284,8 @@ function BernsteinBasisOnSimplex{D}(::Type{V}, order::Int) where {D,V}
   BernsteinBasisOnSimplex{D}(V,order,vertices)
 end
 
-@deprecate BernsteinBasisOnSimplex{D}(::Type{V},order::Int,::Nothing) where {D,V} BernsteinBasisOnSimplex{D}(V,order)
-@deprecate BernsteinBasisOnSimplex(::Val{D},::Type{V},order::Int,::Nothing) where {D,V} BernsteinBasisOnSimplex(Val(D),V,order)
+BernsteinBasisOnSimplex{D}(::Type{V},order::Int,::Nothing) where {D,V} = BernsteinBasisOnSimplex{D}(V,order)
+BernsteinBasisOnSimplex(::Val{D},::Type{V},order::Int,::Nothing) where {D,V} = BernsteinBasisOnSimplex(Val(D),V,order)
 
 Base.size(b::BernsteinBasisOnSimplex{D,V}) where {D,V} = (num_indep_components(V)*binomial(D+get_order(b),D),)
 get_order(::BernsteinBasisOnSimplex{D,V,K}) where {D,V,K} = K

@@ -412,8 +412,8 @@ function BarycentricPΛBasis{D}(::Type{T},r,k; kwargs...) where {D,T}
   BarycentricPΛBasis{D}(T,r,k,vertices; kwargs...)
 end
 
-@deprecate BarycentricPΛBasis(::Val{D},::Type{T},r,k,::Nothing; kwargs...) where {D,T} BarycentricPΛBasis(Val(D),T,r,k; kwargs...)
-@deprecate BarycentricPΛBasis{D}(::Type{T},r,k,::Nothing; kwargs...) where {D,T} BarycentricPΛBasis{D}(T,r,k; kwargs...)
+BarycentricPΛBasis(::Val{D},::Type{T},r,k,::Nothing; kwargs...) where {D,T} = BarycentricPΛBasis(Val(D),T,r,k; kwargs...)
+BarycentricPΛBasis{D}(::Type{T},r,k,::Nothing; kwargs...) where {D,T} = BarycentricPΛBasis{D}(T,r,k; kwargs...)
 
 #get_FEEC_poly_degree(b::BarycentricPΛBasis) = b.r
 #get_FEEC_form_degree(b::BarycentricPΛBasis) = b.k
