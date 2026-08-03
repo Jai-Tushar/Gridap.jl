@@ -270,12 +270,12 @@ used to compute the barycentric coordinates from, it must be non-degenerated
 (have nonzero volume). Otherwise, the coordinates of the reference simplex
 (`ExtrusionPolytope`) are used.
 """
-function BernsteinBasisOnSimplex(::Val{D}, ::Type{V}, order::Int, vertices) where {D,V}
-  BernsteinBasisOnSimplex{D}(V,order,vertices)
-end
-
 function BernsteinBasisOnSimplex(::Val{D}, ::Type{V}, order::Int) where {D,V}
   BernsteinBasisOnSimplex{D}(V,order)
+end
+
+function BernsteinBasisOnSimplex(::Val{D}, ::Type{V}, order::Int, vertices) where {D,V}
+  BernsteinBasisOnSimplex{D}(V,order,vertices)
 end
 
 function BernsteinBasisOnSimplex{D}(::Type{V}, order::Int) where {D,V}
