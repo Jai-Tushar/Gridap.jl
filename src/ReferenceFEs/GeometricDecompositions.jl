@@ -126,7 +126,7 @@ function _are_barycoords_relative_to_simplex(
   @check is_simplex(simplex) && D == num_dims(simplex)
 
   vertices = get_vertex_coordinates(simplex)
-  M = b.cart_to_bary_matrix
+  M = b.x_to_λ
   vλ = [ Polynomials._cart_to_bary(v, M) for v in vertices ] # return SVectors ...
 
   T = eltype(eltype(vλ))
