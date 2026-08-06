@@ -70,7 +70,7 @@ end
 # Gradient AD for computing complex-valued functionals
 # This is slightly more intricate than what we usually deal with
 # for real-valued functionals. There are three cases:
-# 1. Holomorphic maps from ℂ → ℂ: As standard in AD systems, we compute 
+# 1. Holomorphic maps from ℂ → ℂ: As standard in AD systems, we compute
 #    the conjugate gradient f'(z)ᴴ = ∂ᵣu + i ∂ₛu so that dF(z)(v) = <f'(z)ᴴ, v> = f'(z)v.
 # 2. Non-holomorphic maps from ℂ → ℝ: We use CR-Calculus, i.e., it can be shown
 #    that the gradient is given by ∇z(f) = 2∂f/∂z* =  ∂ᵣu + i ∂ₛu and the directional derivative
@@ -100,6 +100,15 @@ function autodiff_array_gradient(::Type{<:Complex},a,i_to_x,j_to_i;tag=default_t
   return autodiff_array_gradient_complex(a,i_to_x,j_to_i;tag)
 end
 
+# For now, taking the Jacobian or Hessian of a complex-valued functional is not implemented.
+# To implement this, we need to consider the case of f being either holomorphic or non-holomorphic
+function autodiff_array_jacobian(::Type{<:Complex},a,i_to_x...;kwargs...)
+  @notimplemented
+end
+
+function autodiff_array_hessian(::Type{<:Complex},a,i_to_x...;kwargs...)
+  @notimplemented
+end
 
 function autodiff_array_reindex(i_to_val, j_to_i)
   if isempty(j_to_i)

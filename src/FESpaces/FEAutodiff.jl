@@ -46,10 +46,6 @@ function _jacobian(f,uh,fuh::DomainContribution;tag::GridapADTag=get_ad_level(fu
   terms = DomainContribution(;ad_level=tag)
   V = get_fe_space(uh)
   T = eltype(get_vector_type(V))
-  # For now, taking the Jacobian of a complex-valued functional is not implemented.
-  # To implement this, we need to consider the case of f being either holomorphic or
-  # non-holomorphic
-  T<:Complex && @notimplemented "Jacobian's of complex-valued functionals are not yet implemented"
   for trian in get_domains(fuh)
     g = _change_argument(jacobian,f,trian,uh)
     cell_u = get_cell_dof_values(uh)
@@ -81,7 +77,6 @@ function _hessian(f,uh,fuh::DomainContribution;tag::GridapADTag=get_ad_level(fuh
   terms = DomainContribution(;ad_level = tag+1) # Two levels consumed
   V = get_fe_space(uh)
   T = eltype(get_vector_type(V))
-  T<:Complex && @notimplemented "Hessian's of complex-valued functionals are not yet implemented"
   for trian in get_domains(fuh)
     g = _change_argument(hessian,f,trian,uh)
     cell_u = get_cell_dof_values(uh)
@@ -241,6 +236,6 @@ function Arrays.autodiff_array_gradient(::Type{<:Complex},a,i_to_x,j_to_i::Skele
   j_to_result_minus = lazy_map((r,s) -> r + im*s,
     lazy_map(AutoDiffMap(),j_to_cfg_r_minus,lazy_map(Broadcasting(real),j_to_yrdual_minus)),
     lazy_map(AutoDiffMap(),j_to_cfg_s_minus,lazy_map(Broadcasting(real),j_to_ysdual_minus)))
-    
+
   return _skeleton_autodiff_merge_gradient(j_to_result_plus,j_to_result_minus)
 end
