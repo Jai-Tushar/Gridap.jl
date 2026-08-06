@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Better control of `num_nearest_vertices` for `KDTreeSearch`. Added a new preference `set_num_nearest_vertices` to set a global default for the library. Since PR[#1312](https://github.com/gridap/Gridap.jl/pull/1312).
+- Add AD support for complex-valued DOFs. Since PR[#1325](https://github.com/gridap/Gridap.jl/pull/1325).
+- Added `Base.adjoint` method for `ArrayBlock`. Since PR[#1325](https://github.com/gridap/Gridap.jl/pull/1325).
 
 ### Fixed
 
@@ -18,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed getting field type when changing domain on empty adapted triangulations. Since PR [#1326](https://github.com/gridap/Gridap.jl/pull/1326).
 
 ### Changed
-
+- Changed `product_rule` to allow for numbers of `Complex` type. Since PR[#1325](https://github.com/gridap/Gridap.jl/pull/1325).
 - Simplified the type parameters of `BernsteinBasisOnSimplex` and `BarycentricP(m)ΛBasisChanged`. The change of coordinate matrix is always stored, with `Float64` precision. Since PR[#1330](https://github.com/gridap/Gridap.jl/pull/1330).
 
 ## [0.20.8] - 2026-06-01
