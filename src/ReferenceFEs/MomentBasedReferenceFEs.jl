@@ -360,13 +360,13 @@ mutable struct FaceMeasure{Df,Dc}
     # Quadrature on the face
     quad = Quadrature(fpoly,order)
     # Face to cell coordinate map
-    #if Df == Dc
-    #  fmaps = [GenericField(identity)]
-    #else # TODO: Could this be an AffineMap?
+    if Df == Dc
+     fmaps = [GenericField(identity)]
+    else # TODO: Could this be an AffineMap?
       fcoords = get_face_coordinates(cpoly,Df)
       basis = get_shapefuns(LagrangianRefFE(Float64,fpoly,1))
       fmaps = map(c -> linear_combination(c,basis),fcoords)
-    #end
+    end
     new{Df,Dc}(1,cpoly,fpoly,quad,fmaps)
   end
 end
